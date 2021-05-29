@@ -14,13 +14,13 @@ Thanks for the FAST_LIO and the livox_relocalization. This program is based on t
 
 
 
-![relocalization_1](/home/yw/livox_autoware_ws/gardener/localization_final_ws/git/car_relocalization/doc/results/relocalization_1.png)
+<div align="center">
+    <img src="doc/results/relocalization_1.png" >
+</div>
 
-
-
-![relocalization_2](/home/yw/livox_autoware_ws/gardener/localization_final_ws/git/car_relocalization/doc/results/relocalization_2.png)
-
-
+<div align="center">
+    <img src="doc/results/relocalization_2.png" >
+</div>
 
 
 ## 1. Prerequisites
