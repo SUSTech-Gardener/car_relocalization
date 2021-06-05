@@ -23,7 +23,9 @@
 	<param name="point_filter_num" type="int" value="3"/>
 
 	<param name="first_relocalized" type="int" value="0"/>
-	<param name="map_file_path" type="string" value="/home/yw/livox_autoware_ws/gardener/relocalization_ws/data/map_example/test_2 " />
+	<!-- <param name="map_file_path" type="string" value="/home/yw/livox_autoware_ws/gardener/relocalization_ws/data/map_example/test_2 " /> -->
+	<param name="map_file_path" type="string" value="/home/yw/livox_autoware_ws/data/final_test " />
+
 
   <node pkg="fast_lio" type="loam_feat_extract" name="feature_extract" output="screen"/>
 

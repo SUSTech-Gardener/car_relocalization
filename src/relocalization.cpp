@@ -54,6 +54,7 @@
 #include <sensor_msgs/PointCloud2.h>
 #include <tf/transform_datatypes.h>
 #include <tf/transform_broadcaster.h>
+#include <pcl/visualization/pcl_visualizer.h>
 
 #include <sensor_msgs/Imu.h>
 #include "livox_ros_driver/CustomMsg.h"
@@ -293,6 +294,7 @@ double initial_first_pose()
     double min_score = 100;
 
     std::vector<double> score_judge;
+    std::vector<Eigen::Matrix4f> pose_buffer;
 
     // // add rotation initial guess
     // Eigen::Matrix4f rotation_pose;
@@ -355,23 +357,33 @@ double initial_first_pose()
             initial_pose = init_guess;
         }   
 
-        if(score_judge.size() <= 3)
-        {
-            score_judge.push_back(score);
-        }
-        else
-        {
-            score_judge.erase(score_judge.begin());
-            score_judge.push_back(score);
-        }
-
-        if(
-            score_judge[1] - score_judge[0] > 0.1 &&
-            score_judge[2] - score_judge[1] > 0.1
-            )
+        if(min_score < 1.0)
         {
             break;
         }
+
+        // if(score_judge.size() <= 3)
+        // {
+        //     score_judge.push_back(score);
+        //     pose_buffer.push_back(init_guess);
+        // }
+        // else
+        // {
+        //     score_judge.erase(score_judge.begin());
+        //     score_judge.push_back(score);
+
+        //     pose_buffer.erase(pose_buffer.begin());
+        //     pose_buffer.push_back(init_guess);
+        // }
+
+        // if(
+        //     score_judge[1] - score_judge[0] > 0.1 &&
+        //     score_judge[2] - score_judge[1] > 0.1
+        //     )
+        // {
+        //     initial_pose = pose_buffer[0];
+        //     break;
+        // }
     }
 
     //match and transform
@@ -483,7 +495,12 @@ int main(int argc, char** argv)
     ros::Publisher pubRelocalPose = nh.advertise<nav_msgs::Odometry> ("/re_local_pose", 1);
     nav_msgs::Odometry RelocalPose;
     RelocalPose.header.frame_id = "/camera_init";
-    RelocalPose.child_frame_id = "/aft_mapped";
+    RelocalPose.child_frame_id = "/relocal_pose";
+
+    ros::Publisher pubRelocalPose_path = nh.advertise<nav_msgs::Path> ("/re_local_pose_path", 1);
+    nav_msgs::Path RelocalPose_path;
+    RelocalPose_path.header.frame_id = "/camera_init";
+    // RelocalPose_path.child_frame_id = "/aft_mapped";
 
     // ros::Publisher pubOldMapPose = nh.advertise<nav_msgs::Odometry> ("/old_map_pose", 1);
     // nav_msgs::Odometry OldMapPose;
@@ -519,6 +536,8 @@ int main(int argc, char** argv)
         downSizeMap.setLeafSize(1.0,1.0,1.0);
         downSizeMap.setInputCloud(laserCloudCornerFromMap_relo);
         downSizeMap.filter(*laserCloudCornerFromMap_relo_down);
+        std::cout << "corner points num = " << laserCloudCornerFromMap_relo_down->size() << std::endl;
+        
         
     }
     if(pcl::io::loadPCDFile<PointType>
@@ -526,12 +545,36 @@ int main(int argc, char** argv)
         PCL_ERROR("Couldn't read file surf_map.pcd\n");
         return(-1);
     }
+    else
+    {
+        std::cout << "surf points num = " << laserCloudSurfFromMap_relo->size() << std::endl;
+    }
     if(pcl::io::loadPCDFile<PointType>
              (map_file_path + "/all_points.pcd",*laserCloudALLFromMap_relo) == -1){
         PCL_ERROR("Couldn't read file all_points_map.pcd\n");
         return(-1);
     }    
+    else
+    {
+
+        // boost::shared_ptr<pcl::visualization::PCLVisualizer> viewer(new pcl::visualization::PCLVisualizer("3D Viewer"));
+
+        // pcl::visualization::PointCloudColorHandlerGenericField<PointType> fildColor(laserCloudALLFromMap_relo, "z"); // 按照z字段进行渲染
+        
+        // viewer->addPointCloud<PointType>(laserCloudALLFromMap_relo, fildColor, "sample cloud");
+        // viewer->setPointCloudRenderingProperties(pcl::visualization::PCL_VISUALIZER_POINT_SIZE, 3, "sample cloud"); // 设置点云大小
+
+        // while (!viewer->wasStopped())
+        // {
+        //     viewer->spinOnce(100);
+        //     boost::this_thread::sleep(boost::posix_time::microseconds(100000));
+        // }
+
+        std::cout << "all_points points num = " << laserCloudALLFromMap_relo->size() << std::endl;
+    }
     std::ifstream kf_map(map_file_path + "/key_frame.txt");
+
+    sleep(5);
     
     if(kf_map){
         while(kf_map){
@@ -566,6 +609,8 @@ int main(int argc, char** argv)
             laserPath.header.frame_id = "/camera_init";
             pubLaserPath.publish(laserPath);
 
+            // std::cout << "publish keyframe path !" << std::endl;
+
         }
     }
     else{
@@ -577,6 +622,7 @@ int main(int argc, char** argv)
     oldmap_allpoints.header.stamp = ros::Time().fromSec(timeLaserCloudCornerLast);
     oldmap_allpoints.header.frame_id = "/camera_init";
     puboldmap_allpoints.publish(oldmap_allpoints);
+    std::cout << "publish allpoints map !" << std::endl;
 
     sensor_msgs::PointCloud2 oldmap_corner;
     pcl::toROSMsg(*laserCloudCornerFromMap_relo, oldmap_corner);
@@ -635,6 +681,34 @@ int main(int argc, char** argv)
                     RelocalPose.pose.pose.position.y = transformTobeMapped[4];
                     RelocalPose.pose.pose.position.z = transformTobeMapped[5];
                     pubRelocalPose.publish(RelocalPose);
+
+
+                    geometry_msgs::PoseStamped current_pose;
+                    current_pose.header.frame_id = "/camera_init";
+                    current_pose.header.stamp = RelocalPose.header.stamp;
+
+                    current_pose.pose.orientation.x = RelocalPose.pose.pose.orientation.x;
+                    current_pose.pose.orientation.y = RelocalPose.pose.pose.orientation.y;
+                    current_pose.pose.orientation.z = RelocalPose.pose.pose.orientation.z;
+                    current_pose.pose.orientation.w = RelocalPose.pose.pose.orientation.w;
+                    current_pose.pose.position.x = RelocalPose.pose.pose.position.x;
+                    current_pose.pose.position.y = RelocalPose.pose.pose.position.y;
+                    current_pose.pose.position.z = RelocalPose.pose.pose.position.z;
+                    RelocalPose_path.poses.push_back(current_pose);
+                    pubRelocalPose_path.publish(RelocalPose_path);
+
+                    static tf::TransformBroadcaster br;
+                    tf::Transform                   transform;
+                    tf::Quaternion                  q;
+                    transform.setOrigin( tf::Vector3( current_pose.pose.position.x,
+                                                        current_pose.pose.position.y,
+                                                        current_pose.pose.position.z ) );
+                    q.setW( current_pose.pose.orientation.w );
+                    q.setX( current_pose.pose.orientation.x );
+                    q.setY( current_pose.pose.orientation.y );
+                    q.setZ( current_pose.pose.orientation.z );
+                    transform.setRotation( q );
+                    br.sendTransform( tf::StampedTransform( transform, current_pose.header.stamp, "/camera_init", "/relocal_pose" ) );
 
                     first_relocalized_flag = 1;
                     std::cout << "first localization success ! " << std::endl;

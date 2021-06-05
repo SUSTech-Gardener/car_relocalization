@@ -114,6 +114,9 @@ double copy_time, readd_time;
 std::deque<sensor_msgs::PointCloud2::ConstPtr> lidar_buffer;
 std::deque<sensor_msgs::Imu::ConstPtr> imu_buffer;
 
+bool relocal_success = false;
+nav_msgs::Odometry relocal_pose;
+
 //surf feature in map
 PointCloudXYZI::Ptr featsFromMap(new PointCloudXYZI());
 PointCloudXYZI::Ptr cube_points_add(new PointCloudXYZI());
@@ -539,6 +542,16 @@ void lasermap_fov_segment()
     readd_time = omp_get_wtime() - t_begin - copy_time;
 }
 
+void relocal_pose_cbk(const nav_msgs::OdometryConstPtr &msg_in)
+{
+    if(!relocal_success)
+    {
+        relocal_pose = *msg_in;
+        relocal_success = true;
+    }
+
+}
+
 void feat_points_cbk(const sensor_msgs::PointCloud2::ConstPtr &msg) 
 {
     mtx_buffer.lock();
@@ -625,6 +638,7 @@ int main(int argc, char** argv)
     ros::NodeHandle nh;
 
     ros::Subscriber sub_pcl = nh.subscribe("/laser_cloud_flat", 20000, feat_points_cbk);
+    ros::Subscriber sub_relocal_pose = nh.subscribe("/re_local_pose", 20000, relocal_pose_cbk);
     ros::Subscriber sub_imu = nh.subscribe("/current_imu", 20000, imu_cbk);
     ros::Publisher pubLaserCloudFullRes = nh.advertise<sensor_msgs::PointCloud2>
             ("/cloud_registered", 100);
@@ -1095,6 +1109,8 @@ int main(int argc, char** argv)
                     }
                     solve_time += omp_get_wtime() - solve_start;
                 }
+
+                
                 
                 std::cout<<"[ mapping ]: iteration count: "<<iterCount+1<<std::endl;
 
@@ -1235,9 +1251,65 @@ int main(int argc, char** argv)
 
             pubOdomAftMapped.publish(odomAftMapped);
 
+
+            // 发布tf数据和path位姿信息
             static tf::TransformBroadcaster br;
             tf::Transform                   transform;
             tf::Quaternion                  q;
+
+            Eigen::Matrix4f relocal_pose_;
+            Eigen::Matrix4f origin_pose;
+            if(relocal_success)
+            {
+                // position ! 
+                // odomAftMapped.pose.pose.position.x
+                // odomAftMapped.pose.pose.position.y
+                // odomAftMapped.pose.pose.position.z
+
+                // rotation ! 
+                // odomAftMapped.pose.pose.orientation.w
+                // odomAftMapped.pose.pose.orientation.x
+                // odomAftMapped.pose.pose.orientation.y
+                // odomAftMapped.pose.pose.orientation.z
+
+
+                // relocal position and rotation !!
+
+
+                origin_pose(0,3) = odomAftMapped.pose.pose.position.x;
+                origin_pose(1,3) = odomAftMapped.pose.pose.position.y;
+                origin_pose(2,3) = odomAftMapped.pose.pose.position.z;
+                Eigen::Quaternionf origin_qu(odomAftMapped.pose.pose.orientation.w,
+                                             odomAftMapped.pose.pose.orientation.x,
+                                             odomAftMapped.pose.pose.orientation.y,
+                                             odomAftMapped.pose.pose.orientation.z);
+                origin_pose.block<3,3>(0,0) = origin_qu.toRotationMatrix();
+                origin_pose(0,3) = odomAftMapped.pose.pose.position.x;
+                origin_pose(1,3) = odomAftMapped.pose.pose.position.y;
+                origin_pose(2,3) = odomAftMapped.pose.pose.position.z;
+
+                Eigen::Quaternionf relocal_qu(relocal_pose.pose.pose.orientation.w,
+                                             relocal_pose.pose.pose.orientation.x,
+                                             relocal_pose.pose.pose.orientation.y,
+                                             relocal_pose.pose.pose.orientation.z);
+                relocal_pose_(0,3) = relocal_pose.pose.pose.position.x;
+                relocal_pose_(1,3) = relocal_pose.pose.pose.position.y;
+                relocal_pose_(2,3) = relocal_pose.pose.pose.position.z;
+                relocal_pose_.block<3,3>(0,0) = relocal_qu.toRotationMatrix();
+
+                relocal_pose_ = relocal_pose_ * origin_pose;
+            }
+
+            odomAftMapped.pose.pose.position.x = relocal_pose_(0,3);
+            odomAftMapped.pose.pose.position.y = relocal_pose_(1,3);
+            odomAftMapped.pose.pose.position.z = relocal_pose_(2,3);
+            Eigen::Matrix3f new_rotation = relocal_pose_.block<3,3>(0,0).matrix();
+            Eigen::Quaternionf new_qu(new_rotation);
+            odomAftMapped.pose.pose.orientation.w = new_qu.w();
+            odomAftMapped.pose.pose.orientation.x = new_qu.x();
+            odomAftMapped.pose.pose.orientation.y = new_qu.y();
+            odomAftMapped.pose.pose.orientation.z = new_qu.z();
+
             transform.setOrigin( tf::Vector3( odomAftMapped.pose.pose.position.x,
                                                 odomAftMapped.pose.pose.position.y,
                                                 odomAftMapped.pose.pose.position.z ) );
