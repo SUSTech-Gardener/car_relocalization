@@ -21,7 +21,9 @@ Thanks for the FAST_LIO and the livox_relocalization. This program is based on t
 <div align="center">
     <img src="doc/results/relocalization_2.png" >
 </div>
-
+<div align="center">
+    <img src="doc/results/relocalization_3.gif" >
+</div>
 
 ## 1. Prerequisites
 ### 1.1 **Ubuntu** and **ROS**
